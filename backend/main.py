@@ -4,15 +4,20 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import json
 
 # --- CONFIGURATION ---
 # 1. Get API Key: https://aistudio.google.com/app/apikey
-# 2. Paste it below inside the quotes
-os.environ["GEMINI_API_KEY"] = "PASTE_YOUR_GEMINI_KEY_HERE"
+# 2. Set environment variable GEMINI_API_KEY or paste below
 
-genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+api_key = os.getenv("GEMINI_API_KEY")
+if not api_key:
+    api_key = "AIzaSyAU9dczkIFDgxQ1nFEKFWYoUbZEFsz8eF0"  # Fallback for development
+
+# Create the Gemini client (new SDK pattern)
+client = genai.Client(api_key=api_key)
 
 app = FastAPI(
     title="Classroom Crisis OS API",
@@ -61,7 +66,6 @@ class EnhanceStrategyRequest(BaseModel):
     strategy_steps: List[str]
     profile: Optional[TeacherProfile] = None
 
-# ---------------------- AI MODELS ----------------------
 
 def get_profile_context(profile: Optional[TeacherProfile]) -> str:
     """Convert teacher profile into context string for AI"""
@@ -84,8 +88,10 @@ IMPORTANT: Personalize your response based on this context. Avoid suggesting str
 """
     return context
 
-# Crisis Solver Model
-crisis_model = genai.GenerativeModel('gemini-2.0-flash', system_instruction="""
+# ---------------------- SYSTEM INSTRUCTIONS ----------------------
+# Define system instructions as constants (new SDK passes these per-request)
+
+CRISIS_SYSTEM_INSTRUCTION = """
 You are an expert teacher mentor with 30 years of classroom experience.
 You help teachers handle classroom crises in real-time.
 
@@ -102,10 +108,9 @@ Rules:
 - If they said a strategy failed, NEVER suggest it
 
 Example JSON: {"action": "Stop. Wait for complete silence.", "strategy": "Use proximity control - walk toward the noise source while teaching."}
-""")
+"""
 
-# Quick Situation Model
-situation_model = genai.GenerativeModel('gemini-2.0-flash', system_instruction="""
+SITUATION_SYSTEM_INSTRUCTION = """
 You are an expert teacher mentor providing quick classroom solutions.
 
 Input: A specific classroom situation type + optional teacher context.
@@ -134,10 +139,9 @@ Example JSON:
     }
   ]
 }
-""")
+"""
 
-# Strategy Enhancer Model
-enhancer_model = genai.GenerativeModel('gemini-2.0-flash', system_instruction="""
+ENHANCER_SYSTEM_INSTRUCTION = """
 You are an expert teacher mentor who adapts strategies to specific classroom contexts.
 
 Input: A teaching strategy + teacher's classroom context.
@@ -149,10 +153,9 @@ Output: JSON with enhanced/adapted version:
 - 'common_mistakes': 2 mistakes to avoid
 
 Consider their grade level, class size, resources, and environment when adapting.
-""")
+"""
 
-# Feedback Learning Model  
-feedback_model = genai.GenerativeModel('gemini-2.0-flash', system_instruction="""
+FEEDBACK_SYSTEM_INSTRUCTION = """
 You are a reflective teacher mentor analyzing what worked and what didn't.
 
 Input: A crisis situation, the action/strategy given, and whether it worked or failed.
@@ -160,7 +163,24 @@ Output: JSON with:
 - 'analysis': Why it likely worked/failed (2-3 sentences)
 - 'alternative': If failed, suggest a better approach. If worked, suggest how to build on it.
 - 'prevention': How to prevent this crisis in the future (1-2 sentences)
-""")
+"""
+
+ENERGIZER_SYSTEM_INSTRUCTION = """
+You are an expert teacher mentor generating classroom energizer activities.
+
+Generate a unique, fun, 3-5 minute classroom energizer activity that:
+1. Gets students moving or talking
+2. Can be done with the teacher's available resources
+3. Is appropriate for their grade level
+4. Relates to their subject if possible
+
+Output JSON with:
+- 'title': Creative name (2-4 words)
+- 'desc': Brief description (10-15 words)  
+- 'duration': Time needed (e.g., "3 minutes")
+- 'steps': Array of 5 clear steps
+- 'variations': 2 alternative versions
+"""
 
 # ---------------------- API ENDPOINTS ----------------------
 
@@ -180,7 +200,7 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "ai_model": "gemini-2.0-flash"}
+    return {"status": "healthy", "ai_model": "gemini-flash-lite-latest"}
 
 @app.post("/solve_crisis")
 async def solve_crisis(request: CrisisRequest):
@@ -195,9 +215,14 @@ async def solve_crisis(request: CrisisRequest):
         profile_context = get_profile_context(request.profile)
         full_prompt = f"{profile_context}\n\nCRISIS: {request.transcript}"
         
-        response = crisis_model.generate_content(
-            full_prompt,
-            generation_config={"response_mime_type": "application/json"}
+        # New SDK: use client.models.generate_content()
+        response = client.models.generate_content(
+            model='gemini-flash-lite-latest',
+            contents=full_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=CRISIS_SYSTEM_INSTRUCTION,
+                response_mime_type='application/json',
+            )
         )
         
         data = json.loads(response.text)
@@ -244,9 +269,14 @@ async def quick_situation(request: QuickSituationRequest):
         profile_context = get_profile_context(request.profile)
         full_prompt = f"{profile_context}\n\nSITUATION: {situation_desc}\n\nProvide exactly 3 solutions."
         
-        response = situation_model.generate_content(
-            full_prompt,
-            generation_config={"response_mime_type": "application/json"}
+        # New SDK: use client.models.generate_content()
+        response = client.models.generate_content(
+            model='gemini-flash-lite-latest',
+            contents=full_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=SITUATION_SYSTEM_INSTRUCTION,
+                response_mime_type='application/json',
+            )
         )
         
         data = json.loads(response.text)
@@ -291,9 +321,14 @@ async def enhance_strategy(request: EnhanceStrategyRequest):
         strategy_info = f"Strategy: {request.strategy_title}\nSteps: {', '.join(request.strategy_steps)}"
         full_prompt = f"{profile_context}\n\n{strategy_info}\n\nAdapt this strategy for this specific teacher's context."
         
-        response = enhancer_model.generate_content(
-            full_prompt,
-            generation_config={"response_mime_type": "application/json"}
+        # New SDK: use client.models.generate_content()
+        response = client.models.generate_content(
+            model='gemini-flash-lite-latest',
+            contents=full_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=ENHANCER_SYSTEM_INSTRUCTION,
+                response_mime_type='application/json',
+            )
         )
         
         data = json.loads(response.text)
@@ -331,9 +366,14 @@ RESULT: {request.feedback}
 Analyze why this {'worked' if request.feedback == 'Worked' else 'failed'} and provide guidance.
 """
         
-        response = feedback_model.generate_content(
-            feedback_prompt,
-            generation_config={"response_mime_type": "application/json"}
+        # New SDK: use client.models.generate_content()
+        response = client.models.generate_content(
+            model='gemini-flash-lite-latest',
+            contents=feedback_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=FEEDBACK_SYSTEM_INSTRUCTION,
+                response_mime_type='application/json',
+            )
         )
         
         data = json.loads(response.text)
@@ -362,26 +402,16 @@ async def generate_energizer(profile: Optional[TeacherProfile] = None):
     """
     try:
         profile_context = get_profile_context(profile)
-        prompt = f"""
-{profile_context}
-
-Generate a unique, fun, 3-5 minute classroom energizer activity that:
-1. Gets students moving or talking
-2. Can be done with their available resources
-3. Is appropriate for their grade level
-4. Relates to their subject if possible
-
-Output JSON with:
-- 'title': Creative name (2-4 words)
-- 'desc': Brief description (10-15 words)  
-- 'duration': Time needed (e.g., "3 minutes")
-- 'steps': Array of 5 clear steps
-- 'variations': 2 alternative versions
-"""
+        prompt = f"{profile_context}\n\nGenerate a unique classroom energizer activity."
         
-        response = situation_model.generate_content(
-            prompt,
-            generation_config={"response_mime_type": "application/json"}
+        # New SDK: use client.models.generate_content()
+        response = client.models.generate_content(
+            model='gemini-flash-lite-latest',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=ENERGIZER_SYSTEM_INSTRUCTION,
+                response_mime_type='application/json',
+            )
         )
         
         return json.loads(response.text)
