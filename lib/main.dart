@@ -10,8 +10,9 @@ import 'package:animate_do/animate_do.dart';
 import 'package:avatar_glow/avatar_glow.dart';
 import 'package:http/http.dart' as http;
 import 'package:sensors_plus/sensors_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-// ---------------------- TEACHER PROFILE MODEL ----------------------
+// ---------------------- TEACHER PROFILE MODEL (with Local Storage) ----------------------
 class TeacherProfile {
   static final TeacherProfile _instance = TeacherProfile._internal();
   factory TeacherProfile() => _instance;
@@ -29,6 +30,68 @@ class TeacherProfile {
   String additionalNotes = "";
 
   bool get isProfileComplete => teacherName.isNotEmpty && gradeLevels.isNotEmpty;
+
+  // Load profile from SharedPreferences
+  Future<void> loadFromStorage() async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    teacherName = prefs.getString('teacher_name') ?? "";
+    gradeLevels = prefs.getStringList('grade_levels') ?? [];
+    classSize = prefs.getInt('class_size') ?? 30;
+    subjects = prefs.getStringList('subjects') ?? [];
+    availableResources = prefs.getStringList('available_resources') ?? [];
+    teachingEnvironment = prefs.getStringList('teaching_environment') ?? [];
+    strategiesThatWorked = prefs.getStringList('strategies_worked') ?? [];
+    strategiesThatFailed = prefs.getStringList('strategies_failed') ?? [];
+    additionalNotes = prefs.getString('additional_notes') ?? "";
+  }
+
+  // Save profile to SharedPreferences
+  Future<void> saveToStorage() async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    await prefs.setString('teacher_name', teacherName);
+    await prefs.setStringList('grade_levels', gradeLevels);
+    await prefs.setInt('class_size', classSize);
+    await prefs.setStringList('subjects', subjects);
+    await prefs.setStringList('available_resources', availableResources);
+    await prefs.setStringList('teaching_environment', teachingEnvironment);
+    await prefs.setStringList('strategies_worked', strategiesThatWorked);
+    await prefs.setStringList('strategies_failed', strategiesThatFailed);
+    await prefs.setString('additional_notes', additionalNotes);
+  }
+
+  // Add a strategy that worked (and save)
+  Future<void> addWorkedStrategy(String strategy) async {
+    if (strategy.isNotEmpty && !strategiesThatWorked.contains(strategy)) {
+      strategiesThatWorked.add(strategy);
+      await saveToStorage();
+    }
+  }
+
+  // Add a strategy that failed (and save)
+  Future<void> addFailedStrategy(String strategy) async {
+    if (strategy.isNotEmpty && !strategiesThatFailed.contains(strategy)) {
+      strategiesThatFailed.add(strategy);
+      await saveToStorage();
+    }
+  }
+
+  // Clear all data
+  Future<void> clearProfile() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+    
+    teacherName = "";
+    gradeLevels = [];
+    classSize = 30;
+    subjects = [];
+    availableResources = [];
+    teachingEnvironment = [];
+    strategiesThatWorked = [];
+    strategiesThatFailed = [];
+    additionalNotes = "";
+  }
 }
 
 // ---------------------- MAIN ENTRY POINT ----------------------
@@ -37,6 +100,9 @@ void main() async {
 
   // NOTE: This will fail if you haven't added google-services.json to android/app/
   await Firebase.initializeApp();
+  
+  // Load saved teacher profile
+  await TeacherProfile().loadFromStorage();
 
   runApp(const TeacherAidApp());
 }
@@ -358,26 +424,39 @@ class _CrisisMicPageState extends State<CrisisMicPage> {
     } else {
       // Start Listening
       bool available = await _speech.initialize(
-        onError: (val) =>
-            setState(() => _statusText = "Error: ${val.errorMsg}"),
+        onError: (val) {
+          print("Speech error: ${val.errorMsg}");
+          // Don't show timeout errors - just reset
+          if (val.errorMsg == "error_speech_timeout") {
+            setState(() {
+              _statusText = "Tap mic and speak...";
+              _isListening = false;
+            });
+          } else {
+            setState(() => _statusText = "Error: ${val.errorMsg}");
+          }
+        },
       );
 
       if (available) {
         setState(() {
           _isListening = true;
           _hasResult = false;
-          _statusText = "Listening...";
+          _statusText = "Listening... Speak now!";
           _transcript = "";
         });
 
         _speech.listen(
           onResult: (val) {
             setState(() => _transcript = val.recognizedWords);
-            if (val.finalResult) {
+            if (val.finalResult && val.recognizedWords.isNotEmpty) {
               setState(() => _isListening = false);
               _processCrisis(val.recognizedWords);
             }
           },
+          listenFor: const Duration(seconds: 30),  // Listen for up to 30 seconds
+          pauseFor: const Duration(seconds: 3),    // Wait 3 seconds of silence before stopping
+          listenMode: stt.ListenMode.dictation,    // Better for sentences
         );
       } else {
         setState(() => _statusText = "Mic not available");
@@ -1002,15 +1081,11 @@ class _CrisisMicPageState extends State<CrisisMicPage> {
         }),
       );
       
-      // Update local profile with feedback
+      // Update local profile with feedback and save to storage
       if (feedback == "Worked" && _strategy.isNotEmpty) {
-        if (!profile.strategiesThatWorked.contains(_strategy)) {
-          profile.strategiesThatWorked.add(_strategy);
-        }
+        await profile.addWorkedStrategy(_strategy);
       } else if (feedback == "Failed" && _strategy.isNotEmpty) {
-        if (!profile.strategiesThatFailed.contains(_strategy)) {
-          profile.strategiesThatFailed.add(_strategy);
-        }
+        await profile.addFailedStrategy(_strategy);
       }
       
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1022,8 +1097,16 @@ class _CrisisMicPageState extends State<CrisisMicPage> {
         ),
       );
     } catch (e) {
+      // Even if backend fails, save feedback locally
+      final profile = TeacherProfile();
+      if (feedback == "Worked" && _strategy.isNotEmpty) {
+        await profile.addWorkedStrategy(_strategy);
+      } else if (feedback == "Failed" && _strategy.isNotEmpty) {
+        await profile.addFailedStrategy(_strategy);
+      }
+      
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Feedback Recorded: $feedback")),
+        SnackBar(content: Text("Feedback Saved Locally: $feedback")),
       );
     }
   }
@@ -1536,10 +1619,13 @@ class _TeacherProfilePageState extends State<TeacherProfilePage> {
     super.dispose();
   }
 
-  void _saveProfile() {
+  void _saveProfile() async {
     _profile.teacherName = _nameController.text;
     _profile.classSize = int.tryParse(_classSizeController.text) ?? 30;
     _profile.additionalNotes = _notesController.text;
+    
+    // Save to local storage
+    await _profile.saveToStorage();
     
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
