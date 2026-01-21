@@ -2,6 +2,12 @@
 
 > **AI-Powered Real-Time Intervention System for Educators**
 
+![Flutter](https://img.shields.io/badge/Flutter-3.10+-02569B?style=for-the-badge&logo=flutter&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-009688?style=for-the-badge&logo=fastapi&logoColor=white)
+![Gemini](https://img.shields.io/badge/Gemini_2.0-Flash-4285F4?style=for-the-badge&logo=google&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
+
+---
 
 ## 🎯 The Problem
 
@@ -256,18 +262,6 @@ curl -X POST http://localhost:8000/solve_crisis \
 }
 ```
 
----
-
-## 🔮 Roadmap
-
-- [ ] **Wearable Integration** — Apple Watch / WearOS quick actions
-- [ ] **Classroom Analytics** — Pattern detection across incidents
-- [ ] **Peer Network** — Anonymous strategy sharing between teachers
-- [ ] **Admin Dashboard** — School-wide intervention insights
-- [ ] **Multi-language Support** — Localized for global classrooms
-- [ ] **Offline AI** — On-device model for no-connectivity scenarios
-
----
 
 ## 🏆 Built For
 
@@ -293,5 +287,3 @@ MIT License — See [LICENSE](LICENSE) for details.
   <b>Built with ❤️ for educators everywhere</b><br>
   <i>Because every teacher deserves a mentor in their pocket.</i>
 </p>
- 
- 
