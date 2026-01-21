@@ -14,7 +14,7 @@ import json
 
 api_key = os.getenv("GEMINI_API_KEY")
 if not api_key:
-    api_key = "AIzaSyAU9dczkIFDgxQ1nFEKFWYoUbZEFsz8eF0"  # Fallback for development
+    api_key = ""  # Fallback for development
 
 # Create the Gemini client (new SDK pattern)
 client = genai.Client(api_key=api_key)
