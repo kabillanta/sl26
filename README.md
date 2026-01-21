@@ -2,12 +2,6 @@
 
 > **AI-Powered Real-Time Intervention System for Educators**
 
-[![Flutter](https://img.shields.io/badge/Flutter-3.10+-02569B?logo=flutter)](https://flutter.dev)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-009688?logo=fastapi)](https://fastapi.tiangolo.com)
-[![Gemini](https://img.shields.io/badge/Gemini_2.0-Flash-4285F4?logo=google)](https://ai.google.dev)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-
----
 
 ## 🎯 The Problem
 
@@ -151,8 +145,8 @@ Context-aware recommendations based on:
 ### 1. Clone & Setup
 
 ```bash
-git clone https://github.com/yourusername/classroom-crisis-os.git
-cd classroom-crisis-os
+git clone https://github.com/kabillanta/sl26.git
+cd sl26
 ```
 
 ### 2. Backend Setup
